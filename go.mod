@@ -1,4 +1,4 @@
-module github.com/globusdigital/soap
+module github.com/daliand/gdsoap
 
 go 1.20
 
