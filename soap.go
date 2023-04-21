@@ -20,7 +20,6 @@ const (
 var (
 	bNamespaceSoap11 = []byte("http://schemas.xmlsoap.org/soap/envelope/")
 	bNamespaceSoap12 = []byte("http://www.w3.org/2003/05/soap-envelope")
-
 )
 
 // Envelope type `xml:"http://schemas.xmlsoap.org/soap/envelope/ Envelope"`
