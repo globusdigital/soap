@@ -131,8 +131,6 @@ func addSOAPHeader(w http.ResponseWriter, contentLength int, contentType string)
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	soapAction := r.Header.Get("SOAPAction")
-	s.log("ServeHTTP method:", r.Method, ", path:", r.URL.Path, ", SOAPAction", "\""+soapAction+"\"")
 	// we have a valid request time to call the handler
 	w = &responseWriter{
 		log:           s.Log,
@@ -157,11 +155,6 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			s.handleError(fmt.Errorf("unknown path %q", r.URL.Path), w)
 			return
 		}
-		actionHandlers, ok := pathHandlers[soapAction]
-		if !ok {
-			s.handleError(fmt.Errorf("unknown action %q", soapAction), w)
-			return
-		}
 
 		// we need to find out, what is in the body
 		probeEnvelope := &Envelope{
@@ -176,6 +169,21 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		t := probeEnvelope.Body.SOAPBodyContentType
 		s.log("found content type", t)
+
+		// Look for SOAPAction in header first
+		soapAction := r.Header.Get("SOAPAction")
+		actionHandlers, ok := pathHandlers[soapAction]
+		if !ok {
+			// look at content type
+			soapAction = t
+			actionHandlers, ok = pathHandlers[soapAction]
+			if !ok {
+				s.handleError(fmt.Errorf("unknown action %q", soapAction), w)
+				return
+			}
+		}
+		s.log("ServeHTTP method:", r.Method, ", path:", r.URL.Path, ", SOAPAction:", soapAction)
+
 		actionHandler, ok := actionHandlers[t]
 		if !ok {
 			s.handleError(fmt.Errorf("no action handler for content type: %q", t), w)
