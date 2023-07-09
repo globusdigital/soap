@@ -19,6 +19,11 @@ type FooRequest struct {
 	Foo     string
 }
 
+type FooHeader struct {
+	XMLName xml.Name `xml:"fooHeader"`
+	Value   string
+}
+
 // FooResponse a simple response
 type FooResponse struct {
 	Bar string
@@ -27,6 +32,19 @@ type FooResponse struct {
 func TestClient_Call(t *testing.T) {
 	wantSOAPBody := []byte(`<Envelope xmlns="http://schemas.xmlsoap.org/soap/envelope/">
 	<Header xmlns="http://schemas.xmlsoap.org/soap/envelope/"></Header>
+	<Body xmlns="http://schemas.xmlsoap.org/soap/envelope/">
+		<fooRequest>
+			<Foo>hello world</Foo>
+		</fooRequest>
+	</Body>
+</Envelope>`)
+
+	wantSOAPBodyWithHeader := []byte(`<Envelope xmlns="http://schemas.xmlsoap.org/soap/envelope/">
+	<Header xmlns="http://schemas.xmlsoap.org/soap/envelope/">
+		<fooHeader>
+			<Value>test header</Value>
+		</fooHeader>
+	</Header>
 	<Body xmlns="http://schemas.xmlsoap.org/soap/envelope/">
 		<fooRequest>
 			<Foo>hello world</Foo>
@@ -80,7 +98,39 @@ func TestClient_Call(t *testing.T) {
 			assert.Exactly(t, 200, httpResp.StatusCode)
 			assert.Exactly(t, FooResponse{Bar: `I love deadlines. I like the whooshing sound they make as they fly by.`}, resp)
 		})
+		t.Run("with header success", func(t *testing.T) {
+			c := NewClient("http://localhorst.ch", &BasicAuth{
+				Login:    "test",
+				Password: "test",
+			})
+			c.EnvelopeHeader = &Header{
+				Header: &FooHeader{Value: "test header"},
+			}
+			c.UserAgent = "ncc-1701-d"
+			c.RequestHeaderFn = func(header http.Header) {
+				header.Set("X-Answer", "42")
+			}
+			c.HTTPClientDoFn = clientDoFn(func(r *http.Request) (*http.Response, error) {
+				haveBody, _ := ioutil.ReadAll(r.Body)
+				assert.Exactly(t, wantSOAPBodyWithHeader, haveBody)
+				assert.Exactly(t, "42", r.Header.Get("X-Answer"))
+				assert.Exactly(t, "ncc-1701-d", r.Header.Get("User-Agent"))
+				return &http.Response{
+					StatusCode: 200,
+					Body:       ioutil.NopCloser(bytes.NewReader(httpSOAPResponse)),
+				}, nil
+			})
+			req := FooRequest{
+				Foo: "hello world",
+			}
+			var resp FooResponse
+			httpResp, err := c.Call(context.Background(), "MySOAPAction", &req, &resp)
+			require.NoError(t, err)
+			assert.NotNil(t, httpResp)
+			assert.Exactly(t, 200, httpResp.StatusCode)
+			assert.Exactly(t, FooResponse{Bar: `I love deadlines. I like the whooshing sound they make as they fly by.`}, resp)
 
+		})
 		t.Run("no soap body", func(t *testing.T) {
 			c := NewClient("http://localhorst.ch", nil)
 			c.HTTPClientDoFn = clientDoFn(func(r *http.Request) (*http.Response, error) {
@@ -104,6 +154,31 @@ func TestClient_Call(t *testing.T) {
 	t.Run("with multipart", func(t *testing.T) {
 		t.Run("success", func(t *testing.T) {
 			c := NewClient("http://localhorst.ch", nil)
+			c.HTTPClientDoFn = clientDoFn(func(r *http.Request) (*http.Response, error) {
+				buf, mw := createMultiPart(t, httpSOAPResponse)
+				hdr := http.Header{}
+				hdr.Add("Content-Type", mw.FormDataContentType())
+				return &http.Response{
+					Header:     hdr,
+					StatusCode: 200,
+					Body:       ioutil.NopCloser(buf),
+				}, nil
+			})
+			req := FooRequest{
+				Foo: "hello world",
+			}
+			var resp FooResponse
+			httpResp, err := c.Call(context.Background(), "MySOAPAction", &req, &resp)
+			require.NoError(t, err)
+			assert.NotNil(t, httpResp)
+			assert.Exactly(t, 200, httpResp.StatusCode)
+			assert.Exactly(t, FooResponse{Bar: `I love deadlines. I like the whooshing sound they make as they fly by.`}, resp)
+		})
+		t.Run("with header success", func(t *testing.T) {
+			c := NewClient("http://localhorst.ch", nil)
+			c.EnvelopeHeader = &Header{
+				Header: &FooHeader{Value: "test header"},
+			}
 			c.HTTPClientDoFn = clientDoFn(func(r *http.Request) (*http.Response, error) {
 				buf, mw := createMultiPart(t, httpSOAPResponse)
 				hdr := http.Header{}

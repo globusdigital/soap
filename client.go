@@ -56,6 +56,7 @@ type Client struct {
 	SoapVersion          string
 	HTTPClientDoFn       func(req *http.Request) (*http.Response, error)
 	LogRemoveHeaderNames []string
+	EnvelopeHeader       *Header
 }
 
 // NewClient constructor. SOAP 1.1 is used by default. Switch to SOAP 1.2 with
@@ -94,6 +95,10 @@ func (c *Client) UseSoap12() {
 func (c *Client) Call(ctx context.Context, soapAction string, request, response interface{}) (*http.Response, error) {
 	envelope := Envelope{
 		Body: Body{Content: request},
+	}
+
+	if c.EnvelopeHeader != nil {
+		envelope.Header = *c.EnvelopeHeader
 	}
 
 	xmlBytes, err := c.Marshaller.Marshal(envelope)
