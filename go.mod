@@ -1,4 +1,4 @@
-module github.com/globusdigital/soap
+module github.com/antalmiklos/soap
 
 go 1.19
 
