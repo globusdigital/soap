@@ -244,6 +244,162 @@ func (c *Client) Call(ctx context.Context, soapAction string, request, response 
 	return httpResponse, nil
 }
 
+type CustomEnvelope struct {
+	Envelope struct{}
+}
+
+// Call makes a SOAP call
+func (c *Client) CallWithCustomEnvelope(ctx context.Context, soapAction string, request CustomEnvelope, response interface{}) (*http.Response, error) {
+	envelope := request
+
+	xmlBytes, err := c.Marshaller.Marshal(envelope)
+	if err != nil {
+		return nil, err
+	}
+	// Adjust namespaces for SOAP 1.2
+	if c.SoapVersion == SoapVersion12 {
+		xmlBytes = replaceSoap11to12(xmlBytes)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "POST", c.url, bytes.NewReader(xmlBytes))
+	if err != nil {
+		return nil, err
+	}
+	if c.auth != nil {
+		req.SetBasicAuth(c.auth.Login, c.auth.Password)
+	}
+
+	req.Header.Add("Content-Type", c.ContentType)
+	ua := c.UserAgent
+	if ua == "" {
+		ua = userAgent
+	}
+	req.Header.Set("User-Agent", ua)
+
+	if soapAction != "" {
+		req.Header.Add("SOAPAction", soapAction)
+	}
+
+	req.Close = true
+	if c.RequestHeaderFn != nil {
+		c.RequestHeaderFn(req.Header)
+	}
+	var logTraceID string
+	if c.Log != nil {
+		logTraceID = randString(12)
+		c.Log("Request", "log_trace_id", logTraceID, "url", c.urlMasked, "request_bytes", string(xmlBytes))
+		hdr := req.Header.Clone()
+		for _, n := range c.LogRemoveHeaderNames {
+			hdr.Set(n, "removed")
+		}
+		c.Log("Header", "log_trace_id", logTraceID, "Header", hdr)
+	}
+	httpResponse, err := c.HTTPClientDoFn(req)
+	if err != nil {
+		return nil, err
+	}
+	defer httpResponse.Body.Close()
+
+	if c.Log != nil {
+		c.Log("Response header", "log_trace_id", logTraceID, "header", httpResponse.Header)
+	}
+	mediaType, params, err := mime.ParseMediaType(httpResponse.Header.Get("Content-Type"))
+	if err != nil {
+		if c.Log != nil {
+			c.Log("WARNING", "log_trace_id", logTraceID, "error", err)
+		}
+	}
+	if c.Log != nil {
+		c.Log("MIMETYPE", "log_trace_id", logTraceID, "mediaType", mediaType)
+	}
+	var rawBody []byte
+	if strings.HasPrefix(mediaType, "multipart/") { // MULTIPART MESSAGE
+		mr := multipart.NewReader(httpResponse.Body, params["boundary"])
+		// If this is a multipart message, search for the soapy part
+		foundSoap := false
+		for {
+			p, err := mr.NextPart()
+			if err == io.EOF {
+				break
+			}
+			if err != nil {
+				return nil, err
+			}
+			slurp, err := ioutil.ReadAll(p)
+			if err != nil {
+				return nil, err
+			}
+			if bytes.HasPrefix(slurp, soapPrefixTagLC) || bytes.HasPrefix(slurp, soapPrefixTagUC) {
+				rawBody = slurp
+				foundSoap = true
+				break
+			}
+		}
+		if !foundSoap {
+			return nil, errors.New("multipart message does contain a soapy part")
+		}
+	} else { // SINGLE PART MESSAGE
+		rawBody, err = ioutil.ReadAll(httpResponse.Body)
+		if err != nil {
+			return httpResponse, err // return both
+		}
+		// Check if there is a body and if yes if it's a soapy one.
+		if len(rawBody) == 0 {
+			if c.Log != nil {
+				c.Log("INFO: Response Body is empty!", "log_trace_id", logTraceID)
+			}
+			return httpResponse, nil // Empty responses are ok. Sometimes Sometimes only a Status 200 or 202 comes back
+		}
+		// There is a message body, but it's not SOAP. We cannot handle this!
+		switch c.SoapVersion {
+		case SoapVersion12:
+			if !bytes.Contains(rawBody, []byte(`soap-envelope`)) { // not quite sure if correct to assert on soap-...
+				if c.Log != nil {
+					c.Log("This is not a 1.2 SOAP-Message", "log_trace_id", logTraceID, "response_bytes", rawBody)
+				}
+				return nil, fmt.Errorf("this is not a 1.2 SOAP-Message: %q", string(rawBody))
+			}
+		default:
+			if !(bytes.Contains(rawBody, soapPrefixTagLC) || bytes.Contains(rawBody, soapPrefixTagUC)) {
+				if c.Log != nil {
+					c.Log("This is not a 1.1 SOAP-Message", "log_trace_id", logTraceID, "response_bytes", rawBody)
+				}
+				return nil, fmt.Errorf("this is not a 1.1 SOAP-Message: %q", string(rawBody))
+			}
+		}
+	}
+
+	// We have an empty body or a SOAP body
+	if c.Log != nil {
+		c.Log("response raw body", "log_trace_id", logTraceID, "response_bytes", rawBody)
+	}
+
+	// Our structs for Envelope, Header, Body and Fault are tagged with namespace
+	// for SOAP 1.1. Therefore we must adjust namespaces for incoming SOAP 1.2
+	// messages
+	rawBody = replaceSoap12to11(rawBody)
+
+	respEnvelope := &Envelope{
+		Body: Body{Content: response},
+	}
+	// Response struct may be nil, e.g. if only a Status 200 is expected. In this
+	// case, we need a Dummy response to avoid a nil pointer if we receive a
+	// SOAP-Fault instead of the empty message (unmarshalling would fail).
+	if response == nil {
+		respEnvelope.Body = Body{Content: &dummyContent{}} // must be a pointer in dummyContent
+	}
+	if err := xml.Unmarshal(rawBody, respEnvelope); err != nil {
+		return nil, fmt.Errorf("soap/client.go Call(): COULD NOT UNMARSHAL: %w\n", err)
+	}
+
+	// If a SOAP Fault is received, try to jsonMarshal it and return it via the
+	// error.
+	if fault := respEnvelope.Body.Fault; fault != nil {
+		return nil, fmt.Errorf("SOAP FAULT: %q", formatFaultXML(rawBody, 1))
+	}
+	return httpResponse, nil
+}
+
 // Format the Soap Fault as indented string. Namespaces are dropped for better
 // readability. Tags with lower level than start level is omitted.
 func formatFaultXML(xmlBytes []byte, startLevel int) string {
