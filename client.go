@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"math/rand"
 	"mime"
 	"mime/multipart"
@@ -22,17 +21,17 @@ const userAgent = "go-soap-1.3"
 
 // XMLMarshaller lets you inject your favourite custom xml implementation
 type XMLMarshaller interface {
-	Marshal(v interface{}) ([]byte, error)
-	Unmarshal(xml []byte, v interface{}) error
+	Marshal(v any) ([]byte, error)
+	Unmarshal(xml []byte, v any) error
 }
 
 type defaultMarshaller struct{}
 
-func (dm defaultMarshaller) Marshal(v interface{}) ([]byte, error) {
+func (dm defaultMarshaller) Marshal(v any) ([]byte, error) {
 	return xml.MarshalIndent(v, "", "	")
 }
 
-func (dm defaultMarshaller) Unmarshal(xmlBytes []byte, v interface{}) error {
+func (dm defaultMarshaller) Unmarshal(xmlBytes []byte, v any) error {
 	return xml.Unmarshal(xmlBytes, v)
 }
 
@@ -44,7 +43,7 @@ type BasicAuth struct {
 
 // Client generic SOAP client
 type Client struct {
-	Log                  func(msg string, keyString_ValueInterface ...interface{}) // optional
+	Log                  func(msg string, keyString_ValueInterface ...any) // optional
 	url                  string
 	urlMasked            string
 	tls                  bool
@@ -73,25 +72,25 @@ func NewClient(postToURL string, auth *BasicAuth) *Client {
 		urlMasked:            urlMasked,
 		auth:                 auth,
 		Marshaller:           defaultMarshaller{},
-		ContentType:          SoapContentType11, // default is SOAP 1.1
-		SoapVersion:          SoapVersion11,
+		ContentType:          ContentType11, // default is SOAP 1.1
+		SoapVersion:          Version11,
 		HTTPClientDoFn:       http.DefaultClient.Do,
 		LogRemoveHeaderNames: []string{"Authorization", "Apikey"},
 	}
 }
 
 func (c *Client) UseSoap11() {
-	c.SoapVersion = SoapVersion11
-	c.ContentType = SoapContentType11
+	c.SoapVersion = Version11
+	c.ContentType = ContentType11
 }
 
 func (c *Client) UseSoap12() {
-	c.SoapVersion = SoapVersion12
-	c.ContentType = SoapContentType12
+	c.SoapVersion = Version12
+	c.ContentType = ContentType12
 }
 
 // Call makes a SOAP call
-func (c *Client) Call(ctx context.Context, soapAction string, request, response interface{}) (*http.Response, error) {
+func (c *Client) Call(ctx context.Context, soapAction string, request, response any) (*http.Response, error) {
 	envelope := Envelope{
 		Body: Body{Content: request},
 	}
@@ -101,7 +100,7 @@ func (c *Client) Call(ctx context.Context, soapAction string, request, response 
 		return nil, err
 	}
 	// Adjust namespaces for SOAP 1.2
-	if c.SoapVersion == SoapVersion12 {
+	if c.SoapVersion == Version12 {
 		xmlBytes = replaceSoap11to12(xmlBytes)
 	}
 
@@ -169,7 +168,7 @@ func (c *Client) Call(ctx context.Context, soapAction string, request, response 
 			if err != nil {
 				return nil, err
 			}
-			slurp, err := ioutil.ReadAll(p)
+			slurp, err := io.ReadAll(p)
 			if err != nil {
 				return nil, err
 			}
@@ -183,7 +182,7 @@ func (c *Client) Call(ctx context.Context, soapAction string, request, response 
 			return nil, errors.New("multipart message does contain a soapy part")
 		}
 	} else { // SINGLE PART MESSAGE
-		rawBody, err = ioutil.ReadAll(httpResponse.Body)
+		rawBody, err = io.ReadAll(httpResponse.Body)
 		if err != nil {
 			return httpResponse, err // return both
 		}
@@ -196,7 +195,7 @@ func (c *Client) Call(ctx context.Context, soapAction string, request, response 
 		}
 		// There is a message body, but it's not SOAP. We cannot handle this!
 		switch c.SoapVersion {
-		case SoapVersion12:
+		case Version12:
 			if !bytes.Contains(rawBody, []byte(`soap-envelope`)) { // not quite sure if correct to assert on soap-...
 				if c.Log != nil {
 					c.Log("This is not a 1.2 SOAP-Message", "log_trace_id", logTraceID, "response_bytes", rawBody)

@@ -21,7 +21,7 @@ type FooResponse struct {
 
 func main() {
 	client := soap.NewClient("http://127.0.0.1:8080/", nil)
-	client.Log = func(msg string, keyString_ValueInterface ...interface{}) {
+	client.Log = func(msg string, keyString_ValueInterface ...any) {
 		keyString_ValueInterface = append(keyString_ValueInterface, msg)
 		log.Println(keyString_ValueInterface...)
 	} // verbose

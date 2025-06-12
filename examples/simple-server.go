@@ -29,11 +29,11 @@ func RunServer() {
 		"operationFoo", // SOAPAction
 		"fooRequest",   // tagname of soap body content
 		// RequestFactoryFunc - give the server sth. to unmarshal the request into
-		func() interface{} {
+		func() any {
 			return &FooRequest{}
 		},
 		// OperationHandlerFunc - do something
-		func(request interface{}, w http.ResponseWriter, httpRequest *http.Request) (response interface{}, err error) {
+		func(request any, w http.ResponseWriter, httpRequest *http.Request) (response any, err error) {
 			fooRequest := request.(*FooRequest)
 			fooResponse := &FooResponse{
 				Bar: "Hello \"" + fooRequest.Foo + "\"",

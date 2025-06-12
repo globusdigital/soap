@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/xml"
-	"io/ioutil"
+	"io"
 	"mime/multipart"
 	"net/http"
 	"strings"
@@ -61,13 +61,13 @@ func TestClient_Call(t *testing.T) {
 				header.Set("X-Answer", "42")
 			}
 			c.HTTPClientDoFn = clientDoFn(func(r *http.Request) (*http.Response, error) {
-				haveBody, _ := ioutil.ReadAll(r.Body)
+				haveBody, _ := io.ReadAll(r.Body)
 				assert.Exactly(t, wantSOAPBody, haveBody)
 				assert.Exactly(t, "42", r.Header.Get("X-Answer"))
 				assert.Exactly(t, "ncc-1701-d", r.Header.Get("User-Agent"))
 				return &http.Response{
 					StatusCode: 200,
-					Body:       ioutil.NopCloser(bytes.NewReader(httpSOAPResponse)),
+					Body:       io.NopCloser(bytes.NewReader(httpSOAPResponse)),
 				}, nil
 			})
 			req := FooRequest{
@@ -86,7 +86,7 @@ func TestClient_Call(t *testing.T) {
 			c.HTTPClientDoFn = clientDoFn(func(r *http.Request) (*http.Response, error) {
 				return &http.Response{
 					StatusCode: 200,
-					Body: ioutil.NopCloser(strings.NewReader(`<?xml version="1.0" encoding="utf-8"?>
+					Body: io.NopCloser(strings.NewReader(`<?xml version="1.0" encoding="utf-8"?>
 <seife12:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
   xmlns:xsd="http://www.w3.org/2001/XMLSchema" 
   xmlns:soap12="http://www.w3.org/2003/05/soap-envelope">
@@ -111,7 +111,7 @@ func TestClient_Call(t *testing.T) {
 				return &http.Response{
 					Header:     hdr,
 					StatusCode: 200,
-					Body:       ioutil.NopCloser(buf),
+					Body:       io.NopCloser(buf),
 				}, nil
 			})
 			req := FooRequest{
@@ -133,7 +133,7 @@ func TestClient_Call(t *testing.T) {
 				return &http.Response{
 					Header:     hdr,
 					StatusCode: 200,
-					Body:       ioutil.NopCloser(buf),
+					Body:       io.NopCloser(buf),
 				}, nil
 			})
 			req := FooRequest{

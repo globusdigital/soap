@@ -5,15 +5,15 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 )
 
 // OperationHandlerFunc runs the actual business logic - request is whatever you constructed in RequestFactoryFunc
-type OperationHandlerFunc func(request interface{}, w http.ResponseWriter, httpRequest *http.Request) (response interface{}, err error)
+type OperationHandlerFunc func(request any, w http.ResponseWriter, httpRequest *http.Request) (response any, err error)
 
 // RequestFactoryFunc constructs a request object for OperationHandlerFunc
-type RequestFactoryFunc func() interface{}
+type RequestFactoryFunc func() any
 
 type dummyContent struct{}
 
@@ -23,7 +23,7 @@ type operationHandler struct {
 }
 
 type responseWriter struct {
-	log           func(...interface{})
+	log           func(...any)
 	w             http.ResponseWriter
 	outputStarted bool
 }
@@ -46,7 +46,7 @@ func (w *responseWriter) WriteHeader(code int) {
 
 // Server a SOAP server, which can be run standalone or used as a http.HandlerFunc
 type Server struct {
-	Log             func(...interface{}) // do nothing on nil or add your fmt.Print* or log.*
+	Log             func(...any) // do nothing on nil or add your fmt.Print* or log.*
 	handlers        map[string]map[string]map[string]*operationHandler
 	Marshaller      XMLMarshaller
 	ContentType     string
@@ -59,25 +59,25 @@ func NewServer() *Server {
 	return &Server{
 		handlers:    make(map[string]map[string]map[string]*operationHandler),
 		Marshaller:  defaultMarshaller{},
-		ContentType: SoapContentType11,
-		SoapVersion: SoapVersion11,
+		ContentType: ContentType11,
+		SoapVersion: Version11,
 	}
 }
 
-func (s *Server) log(args ...interface{}) {
+func (s *Server) log(args ...any) {
 	if s.Log != nil {
 		s.Log(args...)
 	}
 }
 
 func (s *Server) UseSoap11() {
-	s.SoapVersion = SoapVersion11
-	s.ContentType = SoapContentType11
+	s.SoapVersion = Version11
+	s.ContentType = ContentType11
 }
 
 func (s *Server) UseSoap12() {
-	s.SoapVersion = SoapVersion12
-	s.ContentType = SoapContentType12
+	s.SoapVersion = Version12
+	s.ContentType = ContentType12
 }
 
 // RegisterHandler register to handle an operation. This function must not be
@@ -145,10 +145,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	switch r.Method {
 	case "POST":
-		soapRequestBytes, err := ioutil.ReadAll(r.Body)
+		soapRequestBytes, err := io.ReadAll(r.Body)
 		// Our structs for Envelope, Header, Body and Fault are tagged with namespace for SOAP 1.1
 		// Therefore we must adjust namespaces for incoming SOAP 1.2 messages
-		if s.SoapVersion == SoapVersion12 {
+		if s.SoapVersion == Version12 {
 			soapRequestBytes = replaceSoap12to11(soapRequestBytes)
 		}
 
@@ -214,7 +214,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 			xmlBytes, err := s.Marshaller.Marshal(responseEnvelope)
 			// Adjust namespaces for SOAP 1.2
-			if s.SoapVersion == SoapVersion12 {
+			if s.SoapVersion == Version12 {
 				xmlBytes = replaceSoap11to12(xmlBytes)
 			}
 			if err != nil {
@@ -232,7 +232,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (s *Server) jsonDump(v interface{}) string {
+func (s *Server) jsonDump(v any) string {
 	if s.Log == nil {
 		return "not dumping"
 	}

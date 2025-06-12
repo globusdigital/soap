@@ -7,20 +7,19 @@ import (
 // SOAP 1.1 and SOAP 1.2 must expect different ContentTypes and Namespaces.
 
 const (
-	SoapVersion11 = "1.1"
-	SoapVersion12 = "1.2"
+	Version11 = "1.1"
+	Version12 = "1.2"
 
-	SoapContentType11 = "text/xml; charset=\"utf-8\""
-	SoapContentType12 = "application/soap+xml; charset=\"utf-8\""
+	ContentType11 = "text/xml; charset=\"utf-8\""
+	ContentType12 = "application/soap+xml; charset=\"utf-8\""
 
 	NamespaceSoap11 = "http://schemas.xmlsoap.org/soap/envelope/"
 	NamespaceSoap12 = "http://www.w3.org/2003/05/soap-envelope"
 )
 
 var (
-	bNamespaceSoap11 = []byte("http://schemas.xmlsoap.org/soap/envelope/")
-	bNamespaceSoap12 = []byte("http://www.w3.org/2003/05/soap-envelope")
-
+	bNamespaceSoap11 = []byte(NamespaceSoap11)
+	bNamespaceSoap12 = []byte(NamespaceSoap12)
 )
 
 // Envelope type `xml:"http://schemas.xmlsoap.org/soap/envelope/ Envelope"`
@@ -34,16 +33,16 @@ type Envelope struct {
 type Header struct {
 	XMLName xml.Name `xml:"http://schemas.xmlsoap.org/soap/envelope/ Header"`
 
-	Header interface{}
+	Header any
 }
 
 // Body type
 type Body struct {
 	XMLName xml.Name `xml:"http://schemas.xmlsoap.org/soap/envelope/ Body"`
 
-	Fault               *Fault      `xml:",omitempty"`
-	Content             interface{} `xml:",omitempty"`
-	SOAPBodyContentType string      `xml:"-"`
+	Fault               *Fault `xml:",omitempty"`
+	Content             any    `xml:",omitempty"`
+	SOAPBodyContentType string `xml:"-"`
 }
 
 // Fault type

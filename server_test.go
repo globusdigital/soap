@@ -3,7 +3,7 @@ package soap
 import (
 	"bytes"
 	"encoding/xml"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -19,10 +19,10 @@ func TestServer_ServeHTTP(t *testing.T) {
 		"/pathTo",
 		"testPostAction",
 		"fooRequest",
-		func() interface{} {
+		func() any {
 			return &FooRequest{}
 		},
-		func(request interface{}, w http.ResponseWriter, httpRequest *http.Request) (interface{}, error) {
+		func(request any, w http.ResponseWriter, httpRequest *http.Request) (any, error) {
 			fooRequest := request.(*FooRequest)
 			return &FooResponse{
 				Bar: "Hello \"" + fooRequest.Foo + "\"",
@@ -37,11 +37,11 @@ func TestServer_ServeHTTP(t *testing.T) {
 	// structs in this package can't be changed.
 
 	postFn := func(t *testing.T, postBody []byte) *http.Response {
-		body := ioutil.NopCloser(bytes.NewReader(postBody))
+		body := io.NopCloser(bytes.NewReader(postBody))
 
 		req, err := http.NewRequest("POST", srv.URL+"/pathTo", body)
 		require.NoError(t, err)
-		req.Header.Add("Content-Type", SoapContentType11)
+		req.Header.Add("Content-Type", ContentType11)
 		req.Header.Add("SOAPAction", "testPostAction")
 
 		resp, err := http.DefaultClient.Do(req)
